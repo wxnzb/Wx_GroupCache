@@ -14,7 +14,7 @@ type Map struct {
 	hashMap  map[int]string
 }
 
-func New(replicas int, fn Hash) *Map {
+func NewMap(replicas int, fn Hash) *Map {
 	m := &Map{
 		hash:     fn,
 		replicas: replicas,
@@ -25,6 +25,10 @@ func New(replicas int, fn Hash) *Map {
 	}
 	return m
 }
+
+// m.Add("A","A")会发生什么呢？？
+// m.keys 可能包含重复的哈希值。
+// m.hashMap 不会有重复的 key（相同的 hash 会覆盖旧值）。
 func (m *Map) Add(keys ...string) {
 	for _, key := range keys {
 		for i := 0; i < m.replicas; i++ {

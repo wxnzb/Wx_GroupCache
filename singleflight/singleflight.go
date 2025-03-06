@@ -1,4 +1,4 @@
-package singlefligt
+package singleflight
 
 import (
 	"sync"

@@ -1,6 +1,6 @@
 syntax = "proto2";
 package groupcachepb;
-option go_package = "./groupcachepb";
+option go_package = "./";
 message GetRequest{
     required string group=1;
     required string key=2;
