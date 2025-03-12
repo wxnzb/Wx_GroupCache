@@ -23,6 +23,7 @@ func New(maxEntries int) *Cache {
 		maxEntries: maxEntries,
 		list:       list.New(),
 		cache:      make(map[interface{}]*list.Element),
+		//这里还没有补充OnEvicted，将废除掉的kv加进去
 	}
 }
 
