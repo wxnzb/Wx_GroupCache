@@ -110,7 +110,7 @@ func (v ByteView) EqualBytes(b []byte) bool {
 }
 
 // 下面这里还需思考
-func (v ByteView) Reader() io.ByteReader {
+func (v ByteView) Reader() io.ReadSeeker {
 	if v.b != nil {
 		return bytes.NewReader(v.b)
 	}
@@ -127,8 +127,10 @@ func (v ByteView) Copy(dest []byte) int {
 }
 
 // 将ByteView内部存储的数据拷贝到dest数组中，并返回实际拷贝的字节数,这是从off开始
-func (v ByteView) ReadAt(p []byte, off int) (int, error) {
-	n := v.SliceFrom(off).Copy(p)
+// 这里必须将off 转成int64类型嗯的int类型不行；原因test测试中：
+// r, err := ioutil.ReadAll(io.NewSectionReader(v, 0, int64(len(s))))，第一个参数是io.ReaderAt接口，所以ByteView需要实现这个接口
+func (v ByteView) ReadAt(p []byte, off int64) (int, error) {
+	n := v.SliceFrom(int(off)).Copy(p)
 	return n, nil
 }
 

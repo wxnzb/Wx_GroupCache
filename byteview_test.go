@@ -33,13 +33,54 @@ func Test_ByteView(t *testing.T) {
 				t.Errorf("%s:Read=%v;want %s", name, r, s)
 			}
 			//ReadAt()
-			if r, err := ioutil.ReadAll(io.NewSectionReader(v, 0, len(s))); err != nil || string(s) != len(s) {
+			if r, err := ioutil.ReadAll(io.NewSectionReader(v, 0, int64(len(s)))); err != nil || string(r) != s {
 				t.Errorf("%s:ReadAt=%v;want %s", name, r, s)
 			}
 		}
 	}
 }
+func TestByteViewSlice(t *testing.T) {
+	test := []struct {
+		in   string
+		from int
+		to   interface{}
+		want string
+	}{
+		{
+			in:   "abc",
+			from: 1,
+			to:   2,
+			want: "b",
+		},
+		{
+			in:   "abc",
+			from: 1,
+			want: "bc",
+		},
+		{
+			in:   "abc",
+			to:   2,
+			want: "ab",
+		},
+	}
+	for i, tt := range test {
+		//下面这行代码的作用是：创建两个ByteView，一个里面存b,一个里面存s
+		for _, v := range []ByteView{of([]byte(tt.in)), of(tt.in)} {
+			name := fmt.Sprintf("%d:%v", i, v)
+			if tt.to != nil {
+				v.Slice(tt.from, tt.to.(int))
+			} else {
+				v.SliceFrom(tt.from)
+			}
+			if v.String() != tt.want {
+				t.Errorf("%s,got %q,want %q", name, v.String(), tt.want)
+			}
+		}
+	}
+}
 
+// 看来byteview.go时先出现了很多问题呀
+//
 //	func of( x interface{})ByteView{
 //	     if bytes,ok:=x.([]byte),ok{
 //	       return ByteView{b:bytes}
