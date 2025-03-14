@@ -36,7 +36,7 @@ func (c *Cache) Add(key, value interface{}) {
 	}
 	ele := c.list.PushFront(&Entry{key, value})
 	c.cache[key] = ele
-	if c.maxEntries != 0 && c.list.Len() > c.maxEntries {
+	if c.maxEntries != 0 && c.Len() > c.maxEntries {
 		c.RemoveOldest()
 	}
 }
@@ -58,4 +58,18 @@ func (c *Cache) Get(key interface{}) (value interface{}, ok bool) {
 		return ele.Value.(*Entry).value, true
 	}
 	return nil, false
+}
+
+// Remove()
+func (c *Cache) Remove(key string) {
+	if ele, ok := c.cache[key]; ok {
+		c.list.Remove(ele)
+		kv := ele.Value.(*Entry)
+		delete(c.cache, kv.key)
+	}
+}
+
+// 还是实现一个list的Len()把，调用的地方太多了
+func (c *Cache) Len() int {
+	return c.list.Len()
 }

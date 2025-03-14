@@ -38,3 +38,18 @@ func Test_Get(t *testing.T) {
 		}
 	}
 }
+func Test_Remove(t *testing.T) {
+	lru := New(0)
+	lru.Add("wuxi", 12345)
+	val, ok := lru.Get("wuxi")
+	if !ok {
+		t.Fatalf("wuxi not exist")
+	}
+	if val != 12345 {
+		t.Fatalf("wuxi not equal 12345")
+	}
+	lru.Remove("wuxi")
+	if val, ok = lru.Get("wuxi"); ok {
+		t.Fatalf("wuxi shoud no exist")
+	}
+}

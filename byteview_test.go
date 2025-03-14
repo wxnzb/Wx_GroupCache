@@ -8,7 +8,7 @@ import (
 )
 
 func Test_ByteView(t *testing.T) {
-	for _, s := range []string{"", "wx", "WWXx"} {
+	for _, s := range []string{"", "x", "Wwx"} {
 		for _, v := range []ByteView{of([]byte(s)), of(s)} {
 			name := fmt.Sprintf("string:%s,view:%v", s, v)
 			//Len()
@@ -39,6 +39,45 @@ func Test_ByteView(t *testing.T) {
 		}
 	}
 }
+
+func TestByteViewEqual(t *testing.T) {
+	test := []struct {
+		a    interface{}
+		b    interface{}
+		want bool
+	}{
+		{a: "x", b: "x", want: true},
+		{a: "x", b: "y", want: false},
+		{a: "x", b: "yy", want: false},
+		{a: "x", b: []byte("x"), want: true},
+		{a: "x", b: []byte("y"), want: false},
+		{a: "x", b: []byte("yy"), want: false},
+		{a: []byte("x"), b: "x", want: true},
+		{a: []byte("x"), b: "y", want: false},
+		{a: []byte("x"), b: "yy", want: false},
+		{a: []byte("x"), b: []byte("x"), want: true},
+		{a: []byte("x"), b: []byte("y"), want: false},
+		{a: []byte("x"), b: []byte("yy"), want: false},
+	}
+	for i, tt := range test {
+		va := of(tt.a)
+		if bytes, ok := tt.b.([]byte); ok {
+			if got := va.EqualBytes(bytes); got != tt.want {
+				t.Errorf("%d:EqualBytes=%v,want %v", i, got, tt.want)
+			}
+		} else {
+			//这里有点不严谨，因为tt.b可能不是[]byte类型，也不是string类型
+			if got := va.EqualString(tt.b.(string)); got != tt.want {
+				t.Errorf("%d:EqualString=%v,want %v", i, got, tt.want)
+			}
+		}
+		if got := va.Equal(of(tt.b)); got != tt.want {
+			t.Errorf("%d:Equal=%v,want %v", i, got, tt.want)
+		}
+
+	}
+}
+
 func TestByteViewSlice(t *testing.T) {
 	test := []struct {
 		in   string
@@ -68,9 +107,9 @@ func TestByteViewSlice(t *testing.T) {
 		for _, v := range []ByteView{of([]byte(tt.in)), of(tt.in)} {
 			name := fmt.Sprintf("%d:%v", i, v)
 			if tt.to != nil {
-				v.Slice(tt.from, tt.to.(int))
+				v = v.Slice(tt.from, tt.to.(int))
 			} else {
-				v.SliceFrom(tt.from)
+				v = v.SliceFrom(tt.from)
 			}
 			if v.String() != tt.want {
 				t.Errorf("%s,got %q,want %q", name, v.String(), tt.want)

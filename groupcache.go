@@ -4,6 +4,7 @@ import (
 	pb "groupcache/groupcachepb"
 	"groupcache/lru"
 	"groupcache/singleflight"
+	"strconv"
 	"sync"
 	"sync/atomic"
 )
@@ -18,10 +19,11 @@ type cache struct {
 	nevict       int64 //淘汰次数
 }
 type CacheStatus struct {
-	Nbytes int64
-	Nhits  int64
-	Ngets  int64
-	Nevict int64
+	Bytes int64
+	Hits  int64
+	Gets  int64
+	Evict int64
+	Items int64
 }
 
 // 不用New吗
@@ -29,10 +31,11 @@ func (c *cache) Status() CacheStatus {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return CacheStatus{
-		Nbytes: c.nbytes,
-		Nhits:  c.nhits,
-		Ngets:  c.ngets,
-		Nevict: c.nevict,
+		Bytes: c.nbytes,
+		Hits:  c.nhits,
+		Gets:  c.ngets,
+		Evict: c.nevict,
+		Items: c.LockItems(),
 	}
 }
 func (c *cache) add(key string, value ByteView) {
@@ -67,6 +70,20 @@ func (c *cache) Bytes() int64 {
 	return c.nbytes
 }
 
+// 获取cache里面lru里面list的长度
+func (c *cache) items() int64 {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.LockItems()
+}
+func (c *cache) LockItems() int64 {
+	//我真的感觉这种判断真的能用上吗？
+	if c.ca == nil {
+		return 0
+	}
+	return int64(c.ca.Len())
+}
+
 // /////////////////////////////////////////////////////////////////////////////////////////////////////////
 type Group struct {
 	name      string      //这个库的名字
@@ -81,13 +98,29 @@ type Group struct {
 }
 type AtomicInt int64
 type Status struct {
-	Gets             AtomicInt
-	CacheHits        AtomicInt
-	Loads            AtomicInt
-	PeersLoads       AtomicInt
-	PeersErrors      AtomicInt
-	LocalLoads       AtomicInt
-	LocalLoadsErrors AtomicInt
+	Gets             AtomicInt //获取次数
+	CacheHits        AtomicInt //缓存命中次数
+	Loads            AtomicInt //加载次数
+	PeersLoads       AtomicInt //从其他节点加载次数
+	PeersErrors      AtomicInt //从其他节点加载失败次数,为什么会加载失败
+	LocalLoads       AtomicInt //从本地加载次数
+	LocalLoadsErrors AtomicInt //从本地加载失败次数
+}
+
+// 把关于Status里面的实现了
+// 给i加上n
+func (i *AtomicInt) Add(n int64) {
+	atomic.AddInt64((*int64)(i), n)
+}
+
+// 获取i的值
+func (i *AtomicInt) Get() int64 {
+	return atomic.LoadInt64((*int64)(i))
+}
+
+// 将i转换为字符串
+func (i *AtomicInt) String() string {
+	return strconv.FormatInt(i.Get(), 10)
 }
 
 type flightGroup interface {
@@ -276,9 +309,4 @@ func (g *Group) getLocally(key string, dest Sink) (ByteView, error) {
 		return ByteView{}, err
 	}
 	return dest.view()
-}
-
-// 把关于Status里面的实现了
-func (i *AtomicInt) Add(n int64) {
-	atomic.AddInt64((*int64)(i), n)
 }
