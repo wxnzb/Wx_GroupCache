@@ -16,31 +16,38 @@ type cache struct {
 	//下面这是新加的
 	nbytes       int64 //kv占得字节
 	nhits, ngets int64 //命中次数，获取次数
-	nevict       int64 //淘汰次数
+	nevicts      int64 //淘汰次数
 }
 type CacheStatus struct {
-	Bytes int64
-	Hits  int64
-	Gets  int64
-	Evict int64
-	Items int64
+	Bytes  int64
+	Hits   int64
+	Gets   int64
+	Evicts int64
+	Items  int64
 }
 
 // 不用New吗
-func (c *cache) Status() CacheStatus {
+func (c *cache) status() CacheStatus {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	return CacheStatus{
-		Bytes: c.nbytes,
-		Hits:  c.nhits,
-		Gets:  c.ngets,
-		Evict: c.nevict,
-		Items: c.LockItems(),
+		Bytes:  c.nbytes,
+		Hits:   c.nhits,
+		Gets:   c.ngets,
+		Evicts: c.nevicts,
+		Items:  c.LockItems(),
 	}
 }
 func (c *cache) add(key string, value ByteView) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	if c.ca == nil {
+		c.ca = &lru.Cache{OnEvicted: func(key, value interface{}) {
+			val := value.(ByteView)
+			c.nbytes -= int64(len(key.(string))) + int64(val.Len())
+			c.nevicts++
+		}}
+	}
 	//记得强制类型转换
 	c.nbytes += int64(len(key) + value.Len())
 	c.ca.Add(key, value)
@@ -65,8 +72,8 @@ func (c *cache) get(key string) (value ByteView, ok bool) {
 	return
 }
 func (c *cache) Bytes() int64 {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return c.nbytes
 }
 
@@ -309,4 +316,22 @@ func (g *Group) getLocally(key string, dest Sink) (ByteView, error) {
 		return ByteView{}, err
 	}
 	return dest.view()
+}
+
+type CacheType int
+
+const (
+	MainCache = iota + 1
+	HotCache
+)
+
+func (g *Group) CacheStatus(choice CacheType) CacheStatus {
+	switch choice {
+	case MainCache:
+		return g.mainCache.status()
+	case HotCache:
+		return g.hotCache.status()
+	default:
+		return CacheStatus{}
+	}
 }

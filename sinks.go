@@ -1,5 +1,7 @@
 package groupcache
 
+import "google.golang.org/protobuf/proto"
+
 // 结构体他一般除了所必需的byteiew之外还有一个dst,他的作用是什么
 // dst 存储最终数据，外部可以访问它。
 // ByteView 提供一个只读视图，供 view() 方法使用。
@@ -13,6 +15,7 @@ type Sink interface {
 	SetString(s string) error
 	SetBytes(v []byte) error
 	view() (ByteView, error)
+	SetProto(m proto.Message) error
 }
 
 func SetSinkValue(s Sink, v ByteView) error {
@@ -59,6 +62,16 @@ func (s *stringSink) SetBytes(v []byte) error {
 func (s *stringSink) view() (ByteView, error) {
 	return s.v, nil
 }
+func (s *stringSink) SetProto(m proto.Message) error {
+	b, err := proto.Marshal(m)
+	if err != nil {
+		return err
+	}
+	*s.sp = string(b)
+	//s.v.b = cloneBytes(b)这里为啥不用clone,好像这个函数的实现，都不用进行clone
+	s.v.b = b
+	return nil
+}
 
 // 2
 type byteViewSink struct {
@@ -83,6 +96,15 @@ func (b *byteViewSink) view() (ByteView, error) {
 // 他这还多实现了一个set方法，是setBytes和setString的结合版
 func (b *byteViewSink) SetView(v ByteView) error {
 	*b.dst = v
+	return nil
+}
+func (b *byteViewSink) SetProto(m proto.Message) error {
+	v, err := proto.Marshal(m)
+	if err != nil {
+		return err
+	}
+	//*b.dst = ByteView{b: cloneBytes(v)}这里为啥不用clone
+	*b.dst = ByteView{b: v}
 	return nil
 }
 
@@ -111,6 +133,16 @@ func (b *allocBytesSink) SetBytes(v []byte) error {
 }
 func (b *allocBytesSink) view() (ByteView, error) {
 	return b.v, nil
+}
+func (b *allocBytesSink) SetProto(m proto.Message) error {
+	v, err := proto.Marshal(m)
+	if err != nil {
+		return err
+	}
+	*b.dst = cloneBytes(v)
+	b.v.b = v
+	b.v.s = ""
+	return nil
 }
 
 // 这个也实现了一个set方法
@@ -151,4 +183,16 @@ func (b *truncBytesSink) SetBytes(v []byte) error {
 }
 func (b *truncBytesSink) view() (ByteView, error) {
 	return b.v, nil
+}
+func (b *truncBytesSink) SetProto(m proto.Message) error {
+	v, err := proto.Marshal(m)
+	if err != nil {
+		return err
+	}
+	n := copy(*b.dst, v)
+	if n < len(*b.dst) {
+		*b.dst = (*b.dst)[:n]
+	}
+	b.v.b = cloneBytes(v)
+	return nil
 }

@@ -9,6 +9,7 @@ type Cache struct {
 	maxEntries int
 	list       *list.List
 	cache      map[interface{}]*list.Element
+	OnEvicted  func(key, value interface{})
 }
 
 // 定义Entry结构体
@@ -23,7 +24,6 @@ func New(maxEntries int) *Cache {
 		maxEntries: maxEntries,
 		list:       list.New(),
 		cache:      make(map[interface{}]*list.Element),
-		//这里还没有补充OnEvicted，将废除掉的kv加进去
 	}
 }
 
@@ -48,6 +48,10 @@ func (c *Cache) RemoveOldest() {
 		//这是固定用法
 		c.list.Remove(ele)
 		delete(c.cache, ele.Value.(*Entry).key)
+		if c.OnEvicted != nil {
+			kv := ele.Value.(*Entry)
+			c.OnEvicted(kv.key, kv.value)
+		}
 	}
 }
 
@@ -66,6 +70,9 @@ func (c *Cache) Remove(key string) {
 		c.list.Remove(ele)
 		kv := ele.Value.(*Entry)
 		delete(c.cache, kv.key)
+		if c.OnEvicted != nil {
+			c.OnEvicted(kv.key, kv.value)
+		}
 	}
 }
 
