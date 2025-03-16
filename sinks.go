@@ -196,3 +196,52 @@ func (b *truncBytesSink) SetProto(m proto.Message) error {
 	b.v.b = cloneBytes(v)
 	return nil
 }
+
+// 5
+type protoSink struct {
+	dst proto.Message
+	typ string
+	v   ByteView
+}
+
+func (p *protoSink) ProtoSink(dst proto.Message) Sink {
+	return &protoSink{
+		dst: dst,
+	}
+}
+func (p *protoSink) SetString(v string) error {
+	b := []byte(v)
+	p.v.b = b
+	p.v.s = ""
+	err := proto.Unmarshal(b, p.dst)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+func (p *protoSink) SetBytes(v []byte) error {
+	err := proto.Unmarshal(v, p.dst)
+	if err != nil {
+		return err
+	}
+	p.v.b = cloneBytes(v)
+	p.v.s = ""
+	return nil
+}
+func (p *protoSink) SetProto(m proto.Message) error {
+	v, err := proto.Marshal(m)
+	if err != nil {
+		return err
+	}
+	// err = proto.Unmarshal(b, s.dst)
+	// if err != nil {
+	// 	return err
+	// }这个和下面这行有区别吗
+	p.dst = m
+	p.v.b = cloneBytes(v)
+	p.v.s = ""
+	return nil
+}
+func (p *protoSink) view() (ByteView, error) {
+	return p.v, nil
+}
