@@ -38,7 +38,7 @@ type stringSink struct {
 	v  ByteView
 }
 
-func (s *stringSink) StringSink(sp *string) Sink {
+func StringSink(sp *string) Sink {
 	return &stringSink{sp: sp}
 }
 func (s *stringSink) SetString(v string) error {
@@ -78,7 +78,7 @@ type byteViewSink struct {
 	dst *ByteView
 }
 
-func (b *byteViewSink) ByteViewSink(dst *ByteView) Sink {
+func ByteViewSink(dst *ByteView) Sink {
 	return &byteViewSink{dst: dst}
 }
 func (b *byteViewSink) SetString(v string) error {
@@ -114,7 +114,7 @@ type allocBytesSink struct {
 	v   ByteView
 }
 
-func (b *allocBytesSink) AllocBytesSink(dst *[]byte) Sink {
+func AllocBytesSink(dst *[]byte) Sink {
 	return &allocBytesSink{dst: dst}
 }
 func (b *allocBytesSink) SetString(v string) error {
@@ -160,7 +160,7 @@ type truncBytesSink struct {
 	v   ByteView
 }
 
-func (b *truncBytesSink) TruncBytesSink(dst *[]byte) Sink {
+func TruncBytesSink(dst *[]byte) Sink {
 	return &truncBytesSink{dst: dst}
 }
 func (b *truncBytesSink) SetString(v string) error {
@@ -204,7 +204,7 @@ type protoSink struct {
 	v   ByteView
 }
 
-func (p *protoSink) ProtoSink(dst proto.Message) Sink {
+func ProtoSink(dst proto.Message) Sink {
 	return &protoSink{
 		dst: dst,
 	}

@@ -1,0 +1,40 @@
+syntax="proto2";
+option go_package = "testpb/proto;testpb";
+package testpb;
+message TestMessage{
+    optional string name=1;
+    optional string city=2;
+}
+message TestRequest{
+   required string lower=1;
+   optional int32 repeat_count=2 [default=1];
+}
+message TestResponse{
+    optional string value=1;
+}
+message CacheStatus{
+    optional int64 Bytes=1;
+    optional int64 Hits=2;
+    optional int64 Gets=3;
+    optional int64 Evicts=4;
+    optional int64 Items=5;
+}
+message StatusResponse{
+    optional int64 gets=1;
+    optional int64 cache_hits=12;
+    optional int64 fills=2;
+    optional uint64 total_alloc=3;
+    optional CacheStatus main_cache=4;
+    optional CacheStatus hot_cache=5;
+    optional int64 server_in =6;
+    optional int64 loads=8;
+    optional int64 peers_loads=9;
+    optional int64 peer_errors=10;
+    optional int64 local_loads=11;
+}
+message Empty{}
+service GroupCacheTest{
+    rpc Initpeers(Empty)returns(Empty){};
+    rpc Get(TestRequest)returns(TestResponse){};
+    rpc GetStatus(Empty)returns(StatusResponse){};
+}

@@ -180,10 +180,10 @@ func GetGroup(groupname string) *Group {
 	defer mu.Unlock()
 	return groups[groupname]
 }
-func NewGroup(name string, getter Getter) *Group {
-	return newGroup(name, getter, nil)
+func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
+	return newGroup(name, cacheBytes, getter, nil)
 }
-func newGroup(name string, getter Getter, peers PeerPicker) *Group {
+func newGroup(name string, cacheBytes int64, getter Getter, peers PeerPicker) *Group {
 	if getter == nil {
 		panic("nil Getter")
 	}
@@ -192,10 +192,11 @@ func newGroup(name string, getter Getter, peers PeerPicker) *Group {
 	//这句作用是啥
 	initPeerServerOnce.Do(callInitPeerServer)
 	g := &Group{
-		name:   name,
-		getter: getter,
-		loader: &singleflight.Group{},
-		peers:  peers,
+		name:       name,
+		getter:     getter,
+		loader:     &singleflight.Group{},
+		peers:      peers,
+		cacheBytes: cacheBytes,
 	}
 	//还有这句
 	if f := newGroupHook; f != nil {
@@ -219,7 +220,6 @@ func (g *Group) Get(key string, dest Sink) error {
 	if v, ok := g.LookUpCache(key); ok {
 		//缓存命中
 		g.status.CacheHits.Add(1)
-		//这个函数还没有实现
 		return SetSinkValue(dest, v)
 	}
 	//缓存未命中
