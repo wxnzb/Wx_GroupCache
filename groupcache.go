@@ -1,6 +1,7 @@
 package groupcache
 
 import (
+	"context"
 	pb "groupcache/groupcachepb"
 	"groupcache/lru"
 	"groupcache/singleflight"
@@ -28,8 +29,8 @@ type CacheStatus struct {
 
 // 不用New吗
 func (c *cache) status() CacheStatus {
-	c.mu.Lock()
-	defer c.mu.Unlock()
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	return CacheStatus{
 		Bytes:  c.nbytes,
 		Hits:   c.nhits,
@@ -38,6 +39,8 @@ func (c *cache) status() CacheStatus {
 		Items:  c.LockItems(),
 	}
 }
+
+// 删除数据库中的东西的时候要用
 func (c *cache) add(key string, value ByteView) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
@@ -64,6 +67,9 @@ func (c *cache) get(key string) (value ByteView, ok bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.ngets++
+	if c.ca == nil {
+		return
+	}
 	if v, ok := c.ca.Get(key); ok {
 		c.nhits++
 		//ByteView是结构体，这也能强制类型转换吗
@@ -136,12 +142,12 @@ type flightGroup interface {
 
 type Getter interface {
 	//这里要将接收到的value直接传到参数Sink中，Sink还没有定义
-	Get(key string, dest Sink) error
+	Get(ctx context.Context, key string, dest Sink) error
 }
-type GetterFunc func(key string, dest Sink) error
+type GetterFunc func(ctx context.Context, key string, dest Sink) error
 
-func (f GetterFunc) Get(key string, dest Sink) error {
-	return f(key, dest)
+func (f GetterFunc) Get(ctx context.Context, key string, dest Sink) error {
+	return f(ctx, key, dest)
 }
 
 var (
@@ -176,9 +182,11 @@ var groups = make(map[string]*Group)
 
 func GetGroup(groupname string) *Group {
 	//我想不通，这里为什么要加锁
-	mu.Lock()
-	defer mu.Unlock()
-	return groups[groupname]
+	mu.RLock()
+	g := groups[groupname]
+	defer mu.RUnlock()
+	//return groups[groupname]感觉这个也可以
+	return g
 }
 func NewGroup(name string, cacheBytes int64, getter Getter) *Group {
 	return newGroup(name, cacheBytes, getter, nil)
