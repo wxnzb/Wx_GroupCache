@@ -29,6 +29,10 @@ func New(maxEntries int) *Cache {
 
 // Add()
 func (c *Cache) Add(key, value interface{}) {
+	if c.cache == nil {
+		c.cache = make(map[interface{}]*list.Element)
+		c.list = list.New()
+	}
 	if ele, ok := c.cache[key]; ok {
 		c.list.MoveToFront(ele)
 		ele.Value.(*Entry).value = value

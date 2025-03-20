@@ -1,6 +1,7 @@
 package groupcache
 
 import (
+	"context"
 	pb "groupcache/groupcachepb"
 )
 
@@ -8,7 +9,7 @@ type PeerPicker interface {
 	PickPeer(key string) (PeerGetter, bool)
 }
 type PeerGetter interface {
-	Get(*pb.GetRequest, *pb.GetResponse) error
+	Get(context.Context, *pb.GetRequest, *pb.GetResponse) error
 }
 type NoPeers struct{}
 

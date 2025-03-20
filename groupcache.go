@@ -5,6 +5,7 @@ import (
 	pb "groupcache/groupcachepb"
 	"groupcache/lru"
 	"groupcache/singleflight"
+	"math/rand"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -108,6 +109,8 @@ type Group struct {
 	status     Status
 	hotCache   cache
 	cacheBytes int64
+	peersOnce  sync.Once
+	rand       *rand.Rand //随机数看是否加入热点缓存
 }
 type AtomicInt int64
 type Status struct {
@@ -118,6 +121,8 @@ type Status struct {
 	PeersErrors      AtomicInt //从其他节点加载失败次数,为什么会加载失败
 	LocalLoads       AtomicInt //从本地加载次数
 	LocalLoadsErrors AtomicInt //从本地加载失败次数
+	LoadsDeduped     AtomicInt //去重加载次数
+	ServerRequests   AtomicInt //通过网络从其他节点来的 Get 请求，即其他节点向当前节点请求数据的次数，感觉这个暂时用不上
 }
 
 // 把关于Status里面的实现了
@@ -217,10 +222,12 @@ func (g *Group) Getname() string {
 	return g.name
 }
 func (g *Group) InitPeers() {
-	g.peers = GetPeers(g.name)
+	if g.peers == nil {
+		g.peers = GetPeers(g.name)
+	}
 }
-func (g *Group) Get(key string, dest Sink) error {
-	initPeerServerOnce.Do(g.InitPeers)
+func (g *Group) Get(ctx context.Context, key string, dest Sink) error {
+	g.peersOnce.Do(g.InitPeers)
 	g.status.Gets.Add(1)
 	if dest == nil {
 		panic("nil dest")
@@ -233,7 +240,7 @@ func (g *Group) Get(key string, dest Sink) error {
 	//缓存未命中
 	//加入destPopulated看是否被填充
 	destpopulated := false
-	v, destpopulated, err := g.Load(key, dest)
+	v, destpopulated, err := g.Load(ctx, key, dest)
 	if err != nil {
 		return err
 	}
@@ -245,6 +252,9 @@ func (g *Group) Get(key string, dest Sink) error {
 
 // 在本地查找缓存
 func (g *Group) LookUpCache(key string) (v ByteView, ok bool) {
+	if g.cacheBytes <= 0 {
+		return
+	}
 	v, ok = g.mainCache.get(key)
 	if ok {
 		return
@@ -252,27 +262,31 @@ func (g *Group) LookUpCache(key string) (v ByteView, ok bool) {
 	v, ok = g.hotCache.get(key)
 	return
 }
-func (g *Group) Load(key string, dest Sink) (v ByteView, destpopulated bool, err error) {
+func (g *Group) Load(ctx context.Context, key string, dest Sink) (v ByteView, destpopulated bool, err error) {
 	g.status.Loads.Add(1)
 	//实现独立性
 	viewi, err := g.loader.Do(key, func() (interface{}, error) {
 		//先在远程节点找，要是找不到，就在本地通过回调函数加载并存储
 		//这里！！！
+		//之前想Get里不是看过是否缓存了吗，这里为什么还要进行判断
+		//singleflight 只能去重并发请求，但如果请求是 顺序执行 的，还是可能会有两次 load() 调用
 		if v, ok := g.LookUpCache(key); ok {
 			//缓存命中
 			g.status.CacheHits.Add(1)
 			return v, nil
 		}
+		//这个singleflight去重,为啥放在这，怎么去重的
+		g.status.LoadsDeduped.Add(1)
 		//远程
 		if peer, ok := g.peers.PickPeer(key); ok {
-			if v, err := g.getFromPeer(peer, key); err == nil {
+			if v, err := g.getFromPeer(ctx, peer, key); err == nil {
 				g.status.PeersLoads.Add(1)
 				return v, nil
 			}
 			g.status.PeersErrors.Add(1)
 		}
 		//本地回调加载
-		v, err = g.getLocally(key, dest)
+		v, err = g.getLocally(ctx, key, dest)
 		if err != nil {
 			g.status.LocalLoadsErrors.Add(1)
 			return nil, err
@@ -290,6 +304,10 @@ func (g *Group) Load(key string, dest Sink) (v ByteView, destpopulated bool, err
 	return
 }
 func (g *Group) populateCache(key string, v ByteView, cache *cache) {
+	//如果 cacheBytes == 0，说明 禁止使用缓存，所以直接 return
+	if g.cacheBytes <= 0 {
+		return
+	}
 	cache.add(key, v)
 	for {
 		mainBytes := g.mainCache.Bytes()
@@ -304,22 +322,31 @@ func (g *Group) populateCache(key string, v ByteView, cache *cache) {
 		victm.removeOldest()
 	}
 }
-func (g *Group) getFromPeer(peer PeerGetter, key string) (ByteView, error) {
+func (g *Group) getFromPeer(ctx context.Context, peer PeerGetter, key string) (ByteView, error) {
 	req := &pb.GetRequest{
 		Group: &g.name,
 		Key:   &key,
 	}
 	res := &pb.GetResponse{}
-	err := peer.Get(req, res)
+	err := peer.Get(ctx, req, res)
 	if err != nil {
 		return ByteView{}, err
 	}
 	value := ByteView{b: res.Value}
-	//这里还要加：通过随机数控制是否将数据存入 hotCache，且每次只有 10% 的概率会触发 populateCache 方法将数据放入 hotCache，这个之后在加
+	//随机决定是否存入 hotCache
+	var pop bool
+	if g.rand != nil {
+		pop = g.rand.Intn(10) == 0 //0.1的概率等于0
+	} else {
+		pop = rand.Intn(10) == 0
+	}
+	if pop {
+		g.populateCache(key, value, &g.hotCache)
+	}
 	return value, nil
 }
-func (g *Group) getLocally(key string, dest Sink) (ByteView, error) {
-	err := g.getter.Get(key, dest)
+func (g *Group) getLocally(ctx context.Context, key string, dest Sink) (ByteView, error) {
+	err := g.getter.Get(ctx, key, dest)
 	if err != nil {
 		return ByteView{}, err
 	}
